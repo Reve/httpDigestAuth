@@ -43,8 +43,11 @@ func (p *myjar) Cookies(u *url.URL) []*http.Cookie {
 
 func (d *DigestHeaders) digestChecksum() {
 
+	// some clients return lowercase algorithm names
+	var alg = strings.ToUpper(d.Algorithm)
+
 	// check algorithm to use
-	switch d.Algorithm {
+	switch alg {
 	case "MD5":
 		// HA1=MD5(username:realm:password)
 		d.HA1 = fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s:%s:%s", d.Username, d.Realm, d.Password))))
@@ -81,15 +84,12 @@ func (d *DigestHeaders) ApplyAuth(req *http.Request) {
 }
 
 // Auth authenticates against a given URI
-func (d *DigestHeaders) Auth(username string, password string, uri string) (*DigestHeaders, error) {
+func (d *DigestHeaders) Auth(username string, password string, uri string, tr *http.Transport) (*DigestHeaders, error) {
 
 	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 10,
-			DisableCompression:  true,
-		},
-		Timeout: time.Duration(10 * time.Second),
-		Jar:     &myjar{jar: make(map[string][]*http.Cookie)},
+		Transport: tr,
+		Timeout:   time.Duration(10 * time.Second),
+		Jar:       &myjar{jar: make(map[string][]*http.Cookie)},
 	}
 
 	req, err := http.NewRequest("GET", uri, nil)
@@ -139,7 +139,7 @@ auth header.
 */
 func digestAuthParams(r *http.Response) map[string]string {
 	s := strings.SplitN(r.Header.Get("Www-Authenticate"), " ", 2)
-	if len(s) != 2 || s[0] != "Digest" {
+	if len(s) != 2 || !strings.EqualFold(s[0], "Digest") {
 		return nil
 	}
 
