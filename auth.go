@@ -5,11 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 type myjar struct {
@@ -74,8 +75,10 @@ func (d *DigestHeaders) ApplyAuth(req *http.Request) {
 	response := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join([]string{d.HA1, d.Nonce, fmt.Sprintf("%08x", d.Nc),
 		d.Cnonce, d.Qop, d.HA2}, ":"))))
 
+	var alg = strings.ToUpper(d.Algorithm)
+
 	AuthHeader := fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", cnonce="%s", nc=%08x, qop=%s, response="%s", algorithm=%s`,
-		d.Username, d.Realm, d.Nonce, d.Path, d.Cnonce, d.Nc, d.Qop, response, d.Algorithm)
+		d.Username, d.Realm, d.Nonce, d.Path, d.Cnonce, d.Nc, d.Qop, response, alg)
 	if d.Opaque != "" {
 		AuthHeader = fmt.Sprintf(`%s, opaque="%s"`, AuthHeader, d.Opaque)
 	}
@@ -84,13 +87,7 @@ func (d *DigestHeaders) ApplyAuth(req *http.Request) {
 }
 
 // Auth authenticates against a given URI
-func (d *DigestHeaders) Auth(username string, password string, uri string, tr *http.Transport) (*DigestHeaders, error) {
-
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   time.Duration(10 * time.Second),
-		Jar:       &myjar{jar: make(map[string][]*http.Cookie)},
-	}
+func (d *DigestHeaders) Auth(username string, password string, uri string, client *http.Client) (*DigestHeaders, error) {
 
 	req, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
@@ -102,6 +99,9 @@ func (d *DigestHeaders) Auth(username string, password string, uri string, tr *h
 		log.Printf("error in auth package: %v", err)
 		return d, err
 	}
+
+	_, err = io.Copy(ioutil.Discard, resp.Body)
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
